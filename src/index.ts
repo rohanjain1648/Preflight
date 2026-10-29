@@ -1,3 +1,3 @@
-// Stubs: the real resolver and lifecycle handlers arrive in later tasks.
+// Stub: the real resolver handler arrives in a later task.
 export const resolver = (): undefined => undefined;
-export const lifecycle = (): undefined => undefined;
+export { lifecycle } from './lifecycle';
