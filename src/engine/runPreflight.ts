@@ -1,0 +1,108 @@
+import type {
+  Candidate, ConnectionEvidence, Fingerprint, Fingerprinted, PreflightResult, WorkItem,
+} from '../domain/types';
+import {
+  CANDIDATES_AGENT, CANDIDATES_FULL, FINGERPRINT_CONCURRENCY, MAX_NEW_FINGERPRINTS_PER_RUN, MODELS,
+} from '../domain/config';
+import type { ContextProvider } from '../context/provider';
+import type { LlmClient } from '../llm/client';
+import type { FingerprintStore } from '../store/fingerprintStore';
+import { retrieveCandidates } from './candidates';
+import { decideClearance } from './clearance';
+import { mapWithConcurrency } from './concurrency';
+import { contentHashOf, fingerprintItem } from './fingerprint';
+import { extractJson } from './json';
+import { buildJudgePrompt, parseJudgements } from './judge';
+import { rankOverlaps } from './overlap';
+
+export interface PreflightDeps {
+  provider: ContextProvider;
+  llm: LlmClient;
+  fingerprints: FingerprintStore;
+  now: () => Date;
+}
+
+const isFresh = (item: WorkItem, stored: Fingerprint | undefined): stored is Fingerprint =>
+  stored !== undefined && stored.contentHash === contentHashOf(item);
+
+export async function runOverlapPreflight(
+  subjectKey: string,
+  deps: PreflightDeps,
+  mode: 'full' | 'agent',
+): Promise<PreflightResult> {
+  const startedAt = deps.now().toISOString();
+  const { provider, llm, fingerprints, now } = deps;
+
+  const subject = await provider.getItem(subjectKey);
+  const corpus = (await provider.listCorpus()).filter(i => i.id !== subject.id);
+  const stored = await fingerprints.getMany([subject.id, ...corpus.map(i => i.id)]);
+
+  const toPersist: Fingerprint[] = [];
+
+  // The subject is always fingerprinted when missing or stale; failure is fatal.
+  let subjectFp = stored.get(subject.id);
+  if (!isFresh(subject, subjectFp)) {
+    subjectFp = await fingerprintItem(subject, llm);
+    toPersist.push(subjectFp);
+  }
+
+  const withFp: Fingerprinted[] = [];
+  const stale: WorkItem[] = [];
+  for (const it of corpus) {
+    const fp = stored.get(it.id);
+    if (isFresh(it, fp)) withFp.push({ item: it, fp });
+    else stale.push(it);
+  }
+
+  const batch = stale.slice(0, MAX_NEW_FINGERPRINTS_PER_RUN);
+  const settled = await mapWithConcurrency(batch, FINGERPRINT_CONCURRENCY, it => fingerprintItem(it, llm));
+  settled.forEach((s, i) => {
+    if (s.status === 'fulfilled') {
+      withFp.push({ item: batch[i], fp: s.value });
+      toPersist.push(s.value);
+    }
+  });
+
+  if (toPersist.length > 0) await fingerprints.putMany(toPersist);
+
+  const subjectFingerprinted: Fingerprinted = { item: subject, fp: subjectFp };
+  const k = mode === 'agent' ? CANDIDATES_AGENT : CANDIDATES_FULL;
+  const candidates: Candidate[] = retrieveCandidates(subjectFingerprinted, withFp, k);
+
+  let overlaps: PreflightResult['overlaps'] = [];
+  let modelCalls = 0;
+
+  if (candidates.length > 0) {
+    const { system, user } = buildJudgePrompt(subjectFingerprinted, candidates);
+    const res = await llm.complete({ model: MODELS.strong, system, user, maxTokens: 1500 });
+    modelCalls = 1;
+
+    let judgements: ReturnType<typeof parseJudgements> = [];
+    try {
+      judgements = parseJudgements(extractJson(res.text), new Set(candidates.map(c => c.item.id)));
+    } catch {
+      judgements = [];
+    }
+
+    const byId = new Map(candidates.map(c => [c.item.id, c]));
+    const evidence = new Map<string, ConnectionEvidence>();
+    for (const j of judgements) {
+      const cand = byId.get(j.candidateId);
+      if (cand && j.type !== 'none') evidence.set(j.candidateId, await provider.connectionEvidence(subject, cand.item));
+    }
+    overlaps = rankOverlaps(judgements, candidates, evidence);
+  }
+
+  const decisions: PreflightResult['decisions'] = [];
+  const downstream: PreflightResult['downstream'] = [];
+  return {
+    subjectId: subjectKey,
+    clearance: decideClearance({ overlaps, decisions, downstream }),
+    overlaps,
+    decisions,
+    downstream,
+    startedAt,
+    finishedAt: now().toISOString(),
+    modelCalls,
+  };
+}

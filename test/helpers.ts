@@ -40,3 +40,66 @@ export const down = (severity: DownstreamFinding['severity']): DownstreamFinding
   path: ['T-1', 'T-2'],
   hops: 1,
 });
+
+// ---- Task 9 helpers ----
+import type { ConnectionEvidence } from '../src/domain/types';
+import type { ContextProvider } from '../src/context/provider';
+import type { LlmClient } from '../src/llm/client';
+import { FINGERPRINT_SYSTEM_PREFIX } from '../src/engine/fingerprint';
+import { JUDGE_SYSTEM_PREFIX } from '../src/engine/judge';
+
+export function fakeProvider(items: WorkItem[]): ContextProvider {
+  return {
+    async getItem(keyOrId) {
+      const found = items.find(i => i.key === keyOrId || i.id === keyOrId);
+      if (!found) throw new Error(`not found: ${keyOrId}`);
+      return found;
+    },
+    async listCorpus() {
+      return items;
+    },
+    async connectionEvidence(a, b): Promise<ConnectionEvidence> {
+      return {
+        directLink: a.linkedIds.includes(b.id) || b.linkedIds.includes(a.id),
+        sharedTeam: a.spaceKey !== '' && b.spaceKey !== '' && a.spaceKey === b.spaceKey,
+        sharedGoal: false,
+        sharedCollaborator:
+          a.ownerAccountId !== undefined && b.ownerAccountId !== undefined && a.ownerAccountId === b.ownerAccountId,
+      };
+    },
+  };
+}
+
+export interface ScriptedLlm extends LlmClient {
+  fingerprintCalls(): number;
+}
+
+const toText = (v: unknown): string => (typeof v === 'string' ? v : JSON.stringify(v));
+const kebabTokens = (title: string): string[] =>
+  title.toLowerCase().split(/[^a-z0-9]+/).filter(t => t !== '').slice(0, 3);
+
+export function scriptedLlm(script: {
+  fingerprint?: (title: string) => string | object | undefined;
+  judge?: () => object;
+}): ScriptedLlm {
+  let fpCalls = 0;
+  return {
+    async complete({ system, user }) {
+      let text: string;
+      if (system.startsWith(FINGERPRINT_SYSTEM_PREFIX)) {
+        fpCalls++;
+        const title = /^Title: (.*)$/m.exec(user)?.[1] ?? '';
+        const override = script.fingerprint?.(title);
+        text = override !== undefined
+          ? toText(override)
+          : JSON.stringify({ intent: title, tags: kebabTokens(title), systems: [], kind: 'build' });
+      } else if (system.startsWith(JUDGE_SYSTEM_PREFIX)) {
+        text = toText(script.judge ? script.judge() : { judgements: [] });
+      } else {
+        throw new Error('scriptedLlm: unrecognised system prompt');
+      }
+      return { text, inputTokens: 0, outputTokens: 0 };
+    },
+    fingerprintCalls: () => fpCalls,
+  };
+}
