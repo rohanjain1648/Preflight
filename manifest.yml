@@ -1,0 +1,39 @@
+modules:
+  jira:issueContext:
+    - key: preflight-panel
+      title: Preflight
+      label: Preflight
+      resource: panel
+      render: native
+      resolver:
+        function: resolver
+  sql:
+    - key: main
+      engine: mysql
+  llm:
+    - key: main-llm
+      model:
+        - claude
+  trigger:
+    - key: lifecycle
+      function: lifecycle-fn
+      events:
+        - avi:forge:installed:app
+        - avi:forge:upgraded:app
+  function:
+    - key: resolver
+      handler: index.resolver
+    - key: lifecycle-fn
+      handler: index.lifecycle
+resources:
+  - key: panel
+    path: src/frontend/panel.tsx
+permissions:
+  scopes:
+    - read:jira-work
+    - read:jira-user
+    - storage:app
+app:
+  runtime:
+    name: nodejs22.x
+  id: ari:cloud:ecosystem::app/459344e3-43be-494c-9f97-59a1312e8320
