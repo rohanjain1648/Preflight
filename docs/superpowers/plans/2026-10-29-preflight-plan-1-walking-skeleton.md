@@ -124,7 +124,7 @@ Expected: prints your Atlassian account name and email.
 **Interfaces:**
 - Produces: `src/domain/config.ts` exports `OVERLAP_MIN_CONFIDENCE = 0.6`, `HOLD_OVERLAP_CONFIDENCE = 0.75`, `UNKNOWN_CONNECTION_THRESHOLD = 0.3`, `MAX_OVERLAPS_SHOWN = 3`, `CANDIDATES_FULL = 15`, `CANDIDATES_AGENT = 8`, `CORPUS_WINDOW_DAYS = 180`, `EVIDENCE_WEIGHTS: { directLink: 0.9; sharedTeam: 0.8; sharedGoal: 0.5; sharedCollaborator: 0.4 }`, `MAX_NEW_FINGERPRINTS_PER_RUN = 20`, `FINGERPRINT_CONCURRENCY = 5`, `MODELS: { fast: string; strong: string }` (both `'claude-sonnet-5'` until Task 11 confirms a smaller model via `list()`).
 
-- [ ] **Step 1: Initialise the repo**
+- [ ] **Step 1: Initialise the repo** (already done by the controller: repo on branch `plan-1-walking-skeleton`, `.gitignore` present; skip)
 
 Run: `git init` in `D:\downloads\Codegeist`, then create `.gitignore` with `node_modules/`, `coverage/`, `.env`, `*.log`.
 
@@ -169,7 +169,7 @@ Expected: PASS.
 
 - [ ] **Step 8: Write the starting `manifest.yml` and register the app**
 
-Manifest contents for this plan: `app.runtime.name: nodejs22.x`; modules `jira:issueContext` (key `preflight-panel`, title `Preflight`, resource `panel`, `render: native`, resolver function `resolver`), `sql` (key `main`, `engine: mysql`), `llm` (key `main-llm`, `model: [claude]`), `trigger` (key `lifecycle`, function `lifecycle`, events `avi:forge:installed:app` and `avi:forge:upgraded:app`), functions `resolver` → `index.resolver` (`timeoutSeconds: 55`) and `lifecycle` → `index.lifecycle`; resource `panel` → `src/frontend/panel.tsx`; scopes `read:jira-work`, `read:jira-user`, `storage:app`. `src/index.ts` exports `resolver` and `lifecycle` as stubs that return `undefined` for now. If `forge lint` or `forge deploy` rejects `timeoutSeconds: 55` on a UI resolver, use the largest value it accepts and note it in `docs/spikes/first-run.md`; Plan 2 moves full runs onto the job queue anyway.
+Manifest contents for this plan: `app.runtime.name: nodejs22.x`; modules `jira:issueContext` (key `preflight-panel`, title `Preflight`, resource `panel`, `render: native`, resolver function `resolver`), `sql` (key `main`, `engine: mysql`), `llm` (key `main-llm`, `model: [claude]`), `trigger` (key `lifecycle`, function `lifecycle`, events `avi:forge:installed:app` and `avi:forge:upgraded:app`), functions `resolver` → `index.resolver` (`timeoutSeconds: 55`) and `lifecycle` → `index.lifecycle`; resource `panel` → `src/frontend/panel.tsx`; scopes `read:jira-work`, `read:jira-user`, `storage:app`. `src/index.ts` exports `resolver` and `lifecycle` as stubs that return `undefined` for now, and `src/frontend/panel.tsx` is a placeholder UI Kit component rendering the text `Preflight` so the resource path exists (Task 10 replaces it). If `forge lint` or `forge deploy` rejects `timeoutSeconds: 55` on a UI resolver, use the largest value it accepts and note it in `docs/spikes/first-run.md`; Plan 2 moves full runs onto the job queue anyway.
 Run: `forge register Preflight`, then `npm run lint`.
 Expected: `manifest.yml` now carries `app.id: ari:cloud:ecosystem::app/<uuid>`; `forge lint` reports no errors (warnings about unused modules are fine).
 
@@ -295,7 +295,7 @@ export const f = (id: string, title: string, tags: string[], extra: Partial<Work
   item: item(id, title, extra),
   fp: { itemId: id, intent: title, tags, systems: [], kind: 'build', contentHash: id },
 });
-export const candidate = (id: string, title = `Title ${id}`): Candidate => ({ ...f(id, title, []), score: 1 });
+export const candidate = (id: string, title = 'Candidate title'): Candidate => ({ ...f(id, title, []), score: 1 });
 ```
 
 ```ts
@@ -564,7 +564,7 @@ import { buildJudgePrompt, parseJudgements } from '../../src/engine/judge';
 import { f, candidate } from '../helpers';
 
 const subject = f('CHK-1', 'Retry and idempotency for payment webhooks', ['webhook-retries']);
-const candidates = [candidate('PAY-4'), candidate('INV-3')];
+const candidates = [candidate('PAY-4', 'Idempotency keys service'), candidate('INV-3', 'CSV export')];
 
 test('prompt lists every candidate id exactly once', () => {
   const p = buildJudgePrompt(subject, candidates);
