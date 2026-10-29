@@ -1,3 +1,2 @@
-// Stub: the real resolver handler arrives in a later task.
-export const resolver = (): undefined => undefined;
+export { handler as resolver } from './resolvers/index';
 export { lifecycle } from './lifecycle';
