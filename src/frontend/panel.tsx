@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import ForgeReconciler, {
   Box, Button, Inline, Link, Lozenge, SectionMessage, Spinner, Stack, Text,
 } from '@forge/react';
-import { invoke } from '@forge/bridge';
+import { invoke, view } from '@forge/bridge';
 import type { Clearance, ConnectionEvidence, OverlapFinding, PreflightResult } from '../domain/types';
 
 const CLEARANCE: Record<Clearance, { label: string; appearance: 'success' | 'moved' | 'removed' }> = {
@@ -35,7 +35,37 @@ const OverlapRow = ({ o }: { o: OverlapFinding }) => (
   </Stack>
 );
 
+// Dev-only spike controls (Task 11). Remove in Plan 2.
+const DevSpikes = () => {
+  const [out, setOut] = useState<string>('');
+  const [busy, setBusy] = useState(false);
+  const call = async (fn: string) => {
+    setBusy(true);
+    try {
+      setOut(JSON.stringify(await invoke(fn), null, 2));
+    } catch (e) {
+      setOut(`ERROR: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Stack space="space.100">
+      <Text>Dev spikes</Text>
+      <Inline space="space.100">
+        <Button onClick={() => call('spikeModels')} isDisabled={busy}>Spike: models</Button>
+        <Button onClick={() => call('spikeTwg')} isDisabled={busy}>Spike: Teamwork Graph</Button>
+      </Inline>
+      {out && <Text>{out}</Text>}
+    </Stack>
+  );
+};
+
 const Panel = () => {
+  const [isDev, setIsDev] = useState(false);
+  useEffect(() => {
+    view.getContext().then((c) => setIsDev(c.environmentType === 'DEVELOPMENT')).catch(() => setIsDev(false));
+  }, []);
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState<PreflightResult | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -83,6 +113,7 @@ const Panel = () => {
           ))}
         </Stack>
       )}
+      {isDev && <DevSpikes />}
     </Stack>
   );
 };
