@@ -13,6 +13,7 @@ export const ISSUE_FIELDS = ['summary', 'description', 'status', 'assignee', 'du
 
 const PAGE_SIZE = 100;
 const MAX_CORPUS = 1000;
+const MAX_PAGES = Math.ceil(MAX_CORPUS / PAGE_SIZE);
 
 export function mapIssue(json: any, siteUrl: string): WorkItem {
   const f = json.fields ?? {};
@@ -55,14 +56,17 @@ export class RestProvider implements ContextProvider {
 
   async listCorpus(): Promise<WorkItem[]> {
     const items: WorkItem[] = [];
+    const seenTokens = new Set<string>();
     let nextPageToken: string | undefined;
-    do {
+    for (let pages = 0; pages < MAX_PAGES; pages++) {
       const body: Record<string, unknown> = { jql: CORPUS_JQL, fields: ISSUE_FIELDS, maxResults: PAGE_SIZE };
       if (nextPageToken) body.nextPageToken = nextPageToken;
       const page = await this.call('/rest/api/3/search/jql', { method: 'POST', body: JSON.stringify(body) });
       for (const issue of page.issues ?? []) items.push(mapIssue(issue, this.siteUrl));
       nextPageToken = page.nextPageToken || undefined;
-    } while (nextPageToken && items.length < MAX_CORPUS);
+      if (!nextPageToken || seenTokens.has(nextPageToken) || items.length >= MAX_CORPUS) break;
+      seenTokens.add(nextPageToken);
+    }
     return items.slice(0, MAX_CORPUS);
   }
 

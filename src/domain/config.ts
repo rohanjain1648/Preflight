@@ -15,6 +15,7 @@ export const EVIDENCE_WEIGHTS = {
 
 export const MAX_NEW_FINGERPRINTS_PER_RUN = 20 as const;
 export const FINGERPRINT_CONCURRENCY = 5 as const;
+export const FINGERPRINT_DEADLINE_MS = 13000 as const;
 
 // Both 'claude-sonnet-5' until Task 11 confirms a smaller model via list().
 export const MODELS = {

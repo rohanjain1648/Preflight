@@ -8,6 +8,21 @@ test('prompt lists every candidate id exactly once', () => {
   const p = buildJudgePrompt(subject, candidates);
   for (const c of candidates) expect(p.user.split(c.item.id).length - 1).toBe(1);
 });
+test('prompt renders Jira keys (not numeric ids) as bullets, with no list numbering', () => {
+  const jira = { ...f('10023', 'Idempotency keys service', [], { key: 'PAY-4' }), score: 1 };
+  const p = buildJudgePrompt(subject, [jira, candidate('INV-3', 'CSV export')]);
+  expect(p.user.split('PAY-4').length - 1).toBe(1);
+  expect(p.user).not.toContain('10023');
+  expect(p.user).toContain('- PAY-4 | ');
+  expect(p.user).not.toMatch(/^\d+\. /m);
+});
+test('a numeric candidateId is accepted when its string form is allowed', () => {
+  const out = parseJudgements({ judgements: [
+    { candidateId: 10023, type: 'duplicate', confidence: 0.9, reason: 'same' },
+    { candidateId: 99, type: 'duplicate', confidence: 0.9, reason: 'invented' },
+  ] }, new Set(['10023']));
+  expect(out).toEqual([{ candidateId: '10023', type: 'duplicate', confidence: 0.9, reason: 'same' }]);
+});
 test('system prompt starts with the recognisable prefix', () => {
   expect(buildJudgePrompt(subject, candidates).system.startsWith(JUDGE_SYSTEM_PREFIX)).toBe(true);
   expect(JUDGE_SYSTEM_PREFIX).toBe('You judge overlap');

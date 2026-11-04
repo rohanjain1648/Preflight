@@ -24,6 +24,18 @@ test('listCorpus pages with nextPageToken and sends the corpus JQL', async () =>
   expect(bodies[0].jql).toBe(CORPUS_JQL);
   expect(bodies[1].nextPageToken).toBe('t2');
 });
+test('listCorpus terminates when the same nextPageToken keeps coming back', async () => {
+  let calls = 0;
+  const fetchJira = async () => { calls++; return { ok: true, status: 200, json: async () => ({ issues: [], nextPageToken: 'same' }) }; };
+  expect(await new RestProvider(fetchJira, 'https://s').listCorpus()).toEqual([]);
+  expect(calls).toBeLessThanOrEqual(2);
+});
+test('listCorpus never fetches more than 10 pages', async () => {
+  let calls = 0;
+  const fetchJira = async () => { calls++; return { ok: true, status: 200, json: async () => ({ issues: [], nextPageToken: `t${calls}` }) }; };
+  await new RestProvider(fetchJira, 'https://s').listCorpus();
+  expect(calls).toBe(10);
+});
 test('connectionEvidence uses REST proxies: link, same space, same owner', async () => {
   const p = new RestProvider(async () => ({ ok: true, status: 200, json: async () => ({}) }), 'https://s');
   const a = mapIssue(issue('CHK-1'), 'https://s');
